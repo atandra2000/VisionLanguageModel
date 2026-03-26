@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.pth
+*.pt
+*.bin
+coco_dataset/
+*.egg-info/
+dist/
+build/
+.env
+.DS_Store
