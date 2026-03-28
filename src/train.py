@@ -167,7 +167,8 @@ def train(args):
     print("Starting training...")
     for epoch in range(args.epochs):
         model.train()
-        total_loss, optimizer.zero_grad()
+        total_loss = 0.0
+        optimizer.zero_grad()
 
         for batch_idx, batch in enumerate(loader):
             batch = {k: v.to(DEVICE) for k, v in batch.items()}

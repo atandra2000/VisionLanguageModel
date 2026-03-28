@@ -38,7 +38,6 @@ class PatchEmbedding(nn.Module):
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         # Input:  (B, C, H, W)
-        batch_size = pixel_values.size(0)
         # (B, hidden_size, n_h, n_w) → flatten → (B, hidden_size, n_patches)
         embeddings = self.projection(pixel_values).flatten(2)
         # (B, n_patches, hidden_size)
