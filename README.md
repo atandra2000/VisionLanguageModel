@@ -57,8 +57,151 @@ Trained on the **COCO 2014 validation set** (~40k image–caption pairs) on a si
 
 ## Architecture
 
+### End-to-End PaliGemma-Style Pipeline
+
+```mermaid
+flowchart LR
+    subgraph V["SigLIP Vision Encoder"]
+        direction TB
+        V1["Image 224×224×3"]:::in
+        V2["Conv2D Patch Embed<br/>16×16 → 196 patches"]:::pe
+        V3["+ Sinusoidal Position Embed"]:::pe
+        V4["VisionEncoderLayer ×8<br/>Pre-Norm LN · 8-head Self-Attn<br/>MLP (GELU) · Residuals"]:::enc
+        V5["Final LayerNorm<br/>Output: (B, 196, 512)"]:::norm
+    end
+    subgraph P["Multimodal Projector"]
+        direction TB
+        P1["Linear 512 → 1024"]:::proj
+        P2["Dropout 0.1"]:::drop
+    end
+    subgraph L["Gemma Language Decoder"]
+        direction TB
+        L1["Token Embedding<br/>vocab 32K, d_model 1024"]:::emb
+        L2["Inject image patches at [IMG] placeholders"]:::inject
+        L3["GemmaDecoderLayer ×12<br/>RMSNorm · GQA 8 Q / 4 KV / head_dim 128<br/>RoPE · Causal mask · GeGLU FFN"]:::dec
+        L4["Final RMSNorm → LM Head"]:::head
+    end
+
+    V1 --> V2 --> V3 --> V4 --> V5 --> P1 --> P2 --> L2
+    L1 --> L2 --> L3 --> L4 --> TOK["Caption tokens"]:::out
+
+    classDef in fill:#e0e7ff,stroke:#3730a3,color:#000
+    classDef pe fill:#fef3c7,stroke:#92400e,color:#000
+    classDef enc fill:#dbeafe,stroke:#1d4ed8,color:#000
+    classDef norm fill:#f3f4f6,stroke:#374151,color:#000
+    classDef proj fill:#fde68a,stroke:#b45309,color:#000
+    classDef drop fill:#f3f4f6,stroke:#374151,color:#000
+    classDef emb fill:#fce7f3,stroke:#9d174d,color:#000
+    classDef inject fill:#fed7aa,stroke:#9a3412,color:#000
+    classDef dec fill:#fce7f3,stroke:#9d174d,color:#000
+    classDef head fill:#bbf7d0,stroke:#15803d,color:#000
+    classDef out fill:#bbf7d0,stroke:#15803d,color:#000
+```
+
+### Image-Text Fusion &mdash; the [IMG] placeholder trick
+
+```mermaid
+flowchart TB
+    subgraph TXT["Text token stream"]
+        direction LR
+        T0["<bos>"]:::t
+        T1["a"]:::t
+        T2["photo"]:::t
+        T3["of"]:::t
+        IMG["[IMG]"]:::img
+        T4["a"]:::t
+        T5["dog"]:::t
+        T6["<eos>"]:::t
+    end
+    subgraph VISION["Vision patches (196)"]
+        direction LR
+        V1["p₁"]:::p
+        V2["p₂"]:::p
+        V3["..."]:::p
+        V4["p¹¹ⁱ⁴"]:::p
+    end
+    subgraph SEQ["Decoder input sequence (196 + tokens)"]
+        direction LR
+        S0["<bos>"]:::ts
+        S1["a"]:::ts
+        S2["photo"]:::ts
+        S3["of"]:::ts
+        S4["p₁"]:::ps
+        S5["p₂"]:::ps
+        S6["..."]:::ps
+        S7["p¹¹ⁱ⁴"]:::ps
+        S8["a"]:::ts
+        S9["dog"]:::ts
+        S10["<eos>"]:::ts
+    end
+
+    TXT --> SEQ
+    VISION -->|"projector 512→1024"| SEQ
+
+    classDef t fill:#f3f4f6,stroke:#374151,color:#000
+    classDef img fill:#fed7aa,stroke:#9a3412,color:#000
+    classDef p fill:#dbeafe,stroke:#1d4ed8,color:#000
+    classDef ts fill:#f3f4f6,stroke:#374151,color:#000
+    classDef ps fill:#dbeafe,stroke:#1d4ed8,color:#000
+```
+
+### Vision Encoder (SigLIP-inspired)
+
+```mermaid
+flowchart TB
+    IMG["Image<br/>224 × 224 × 3"]:::in
+    CONV["Conv2D 16×16 stride 16<br/>patch embedding"]:::pe
+    POS["+ Sinusoidal Positional Encoding"]:::pe
+    subgraph VEL["VisionEncoderLayer ×8"]
+        direction TB
+        V1["Pre-Norm LayerNorm"]:::norm --> V2["Multi-Head Self-Attention<br/>8 heads, d=512"]:::attn --> V3["+ Residual"]:::res
+        V3 --> V4["Pre-Norm LayerNorm"]:::norm --> V5["MLP: Linear→GELU→Linear"]:::mlp --> V6["+ Residual"]:::res
+    end
+    LN["Final LayerNorm"]:::norm
+    OUT["(B, 196, 512)"]:::out
+
+    IMG --> CONV --> POS --> VEL --> LN --> OUT
+
+    classDef in fill:#e0e7ff,stroke:#3730a3,color:#000
+    classDef pe fill:#fef3c7,stroke:#92400e,color:#000
+    classDef norm fill:#f3f4f6,stroke:#374151,color:#000
+    classDef attn fill:#dbeafe,stroke:#1d4ed8,color:#000
+    classDef res fill:#f3f4f6,stroke:#374151,color:#000
+    classDef mlp fill:#fce7f3,stroke:#9d174d,color:#000
+    classDef out fill:#bbf7d0,stroke:#15803d,color:#000
+```
+
+### Language Decoder (Gemma-style)
+
+```mermaid
+flowchart TB
+    T["Input tokens<br/>(B, T, 1024)"]:::in
+    subgraph GDL["GemmaDecoderLayer ×12"]
+        direction TB
+        L1["RMSNorm"]:::norm --> L2["Grouped Query Attention<br/>8 Q / 4 KV / head_dim 128<br/>RoPE + causal mask"]:::attn --> L3["+ Residual"]:::res
+        L3 --> L4["RMSNorm"]:::norm --> L5["GeGLU FFN"]:::mlp --> L6["+ Residual"]:::res
+    end
+    LN["Final RMSNorm"]:::norm
+    HEAD["LM Head<br/>vocab 32K"]:::head
+
+    T --> GDL --> LN --> HEAD
+
+    classDef in fill:#e0e7ff,stroke:#3730a3,color:#000
+    classDef norm fill:#f3f4f6,stroke:#374151,color:#000
+    classDef attn fill:#dbeafe,stroke:#1d4ed8,color:#000
+    classDef res fill:#f3f4f6,stroke:#374151,color:#000
+    classDef mlp fill:#fce7f3,stroke:#9d174d,color:#000
+    classDef head fill:#bbf7d0,stroke:#15803d,color:#000
+```
+
+### Text Alternative (ASCII)
+
 ```
 Input Image (224×224×3)
+         │
+┌────────▼────────────────────────────────────────────────────────┐
+│                  SigLIP Vision Encoder                          │
+
          │
 ┌────────▼────────────────────────────────────────────────────────┐
 │                  SigLIP Vision Encoder                          │
