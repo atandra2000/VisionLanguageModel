@@ -7,8 +7,7 @@
 > **Architecture:** SigLIP ViT encoder + Gemma decoder + linear projector
 > **Task:** image captioning on COCO 2014 val (~40K image-caption pairs)
 > **Hardware:** P100 16GB · **Status:** epoch 1 trained
-> **Architecture detail:** see `README.md §13`; cross-project guidance at
-> `.agents/skills/computer-vision-multimodal/SKILL.md §2`.
+> **Architecture detail:** see `README.md §13`.
 
 ## 1. Subagent: `multimodal-vlm-trainer`
 
@@ -51,7 +50,7 @@ a decoder", "Gemma decoder with vision encoder."
 ## 3. Cross-references
 
 - For LLM-side architecture (GQA, RoPE): `LLM/LLaMA-3-Lite/AGENTS.md`.
-- For training loop patterns: `.agents/skills/pytorch-deep-dive/SKILL.md`.
+- For training loop patterns: `.agents/universal-conventions.md`.
 
 ## 4. Files
 
