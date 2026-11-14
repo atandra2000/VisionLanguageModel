@@ -43,7 +43,12 @@ class PaliGemmaModel(nn.Module):
 
     def __init__(self, vision_config: VisionConfig, language_config: LanguageConfig, tokenizer=None):
         super().__init__()
-        self.config = PaliGemmaConfig(vision_config, language_config)
+        self.config = PaliGemmaConfig(
+            vision_config,
+            language_config,
+            vision_output_dim=vision_config.hidden_size,
+            language_input_dim=language_config.hidden_size,
+        )
         self.vision_encoder = SigLIPVisionEncoder(vision_config)
         self.language_model = GemmaLanguageModel(language_config)
         self.multimodal_projector = MultimodalProjector(self.config)
